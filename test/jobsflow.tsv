@@ -1,0 +1,4 @@
+1	C:\work\cmd1.bat
+2	C:\work\cmd1.bat	1
+3	C:\work\cmd2.bat	1
+4	C:\work\cmd1.bat	2,3
