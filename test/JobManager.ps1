@@ -147,7 +147,7 @@ foreach ($line in $inputLines) {
 
 # completation check and start jobs
 while ((IsRunning -logFile $logFile -jobs $jobs)) {
-    if ($errorLog.IsNewWritten()) { "error occured."; exit } 
+    if ($errorLog.IsNewWritten()) { "Detected new entries to the error log."; exit } 
     $jobs | ForEach-Object { 
         if (!$_.IsStart -and $_.IsStandby()) {
             $_.Starts(); "$(Get-Date -Format "yyyy/MM/dd HH:mm:ss")`n  ID: $($_.Id)`n  Command: $($_.Command)`n`  PreID: $($_.PreIds -join ",")"
