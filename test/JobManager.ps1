@@ -1,7 +1,6 @@
-$jobsFlowFile = Join-Path $PSScriptRoot "jobs_flow.tsv"
+$jobsFlowFile = Join-Path $PSScriptRoot "jobsflow.tsv"
 
 $scanIntervalSecond = "2"
-$logFile = "C:\work\jobs.log"
 $logFile = Join-Path $PSScriptRoot "$(Get-Date -Format 'yyyyMMdd_HHmmss')_Jobs.log"
 
 $errorLogFile = "C:\work\ERROR.log"
@@ -44,6 +43,7 @@ class Job {
 	$LogFile
 
 	[bool]$IsStart
+	$Process
 
 	Job ($id, $command, [array]$preIds, $logFile) {
 		$this.Id = $id
@@ -84,7 +84,7 @@ class Job {
 			"$($this.Command)"
 			"echo %DATE%`t%TIME%`t$($this.id)_END`t>>$($this.logFile)"
 		)
-		Start-Process -FilePath cmd	-ArgumentList "/c $($commands -join '&')"
+		$this.Process = Start-Process -FilePath cmd	-ArgumentList "/c $($commands -join '&')" -PassThru
 		$this.IsStart = $true
 	}
 
@@ -148,6 +148,10 @@ foreach ($line in $inputLines) {
 # completation check and start jobs
 while ((IsRunning -logFile $logFile -jobs $jobs)) {
 	if ($errorLog.IsNewWritten()) { "error occured."; exit } 
-	$jobs | ForEach-Object { if (!$_.IsStart -and $_.IsStandby()) { $_.Starts() } }
+	$jobs | ForEach-Object { 
+		if (!$_.IsStart -and $_.IsStandby()) {
+			$_.Starts(); "$(Get-Date -Format "yyyy/MM/dd HH:mm:ss")`n  ID: $($_.Id)`n  Command: $($_.Command)`n`  PreID: $($_.PreIds -join ",")"
+		}
+	}
 	Start-Sleep -Seconds $scanIntervalSecond
 }
