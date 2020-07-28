@@ -8,12 +8,14 @@ $errorLogFile = "C:\work\ERROR.log"
 class Log {
     $Date
     $Time
+    $Command
     $Message
     $ExitCode
 
-    Log ($date, $time, $message, $exitCode) {
+    Log ($date, $time, $command, $message, $exitCode) {
         $this.Date = $date
         $this.Time = $time
+        $this.Command = $command
         $this.Message = $message
         $this.ExitCode = $exitCode
     }
@@ -31,7 +33,7 @@ function GetLogs($logFile) {
     $logs = @()
     foreach ($line in (Get-Content $logFile)) {
         $splitedLine = $line.Split("`t")
-        $logs += New-Object Log($splitedLine[0], $splitedLine[1], $splitedLine[2], $splitedLine[3])
+        $logs += New-Object Log($splitedLine[0], $splitedLine[1], $splitedLine[2], $splitedLine[3], $splitedLine[4])
     }
     return $logs
 }
@@ -80,9 +82,9 @@ class Job {
 
     [void] Starts() {
         $commands = @(
-            "echo %DATE%`t%TIME%`t$($this.id)_START`t>>$($this.logFile)"
+            "echo %DATE%`t%TIME%`t$($this.Command)`t$($this.id)_START`t>>$($this.logFile)"
             "$($this.Command)"
-            "echo %DATE%`t%TIME%`t$($this.id)_END`t>>$($this.logFile)"
+            "echo %DATE%`t%TIME%`t$($this.Command)`t$($this.id)_END`t>>$($this.logFile)"
         )
         $this.Process = Start-Process -FilePath cmd	-ArgumentList "/c $($commands -join '&')" -PassThru
         $this.IsStart = $true
