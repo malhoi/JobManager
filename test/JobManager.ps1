@@ -1,10 +1,21 @@
-$jobsFlowFile = Join-Path $PSScriptRoot "jobsflow.tsv"
+param (
+    $jobsFlowFile,
+    $errorLogFile
+)
 
+# default Param (for testing)
+if (!$jobsFlowFile) {
+    $jobsFlowFile = (Join-Path $PSScriptRoot "jobsflow.tsv")
+}
+if (!$errorLogFile) {
+    $errorLogFile = (Join-Path $PSScriptRoot "ERROR.log")
+}
+
+# other setting
 $scanIntervalSecond = "2"
 $logFile = Join-Path $PSScriptRoot "$(Get-Date -Format 'yyyyMMdd_HHmmss')_Jobs.log"
 
-$errorLogFile = "C:\work\ERROR.log"
-
+# components
 class Log {
     $Date
     $Time
@@ -133,27 +144,34 @@ class ErrorLog {
 
 }
 
-[array]$inputLines = Get-Content $jobsFlowFile
-"LogFile: $logFile"; New-Item $logFile -ItemType File > $null
+# main
+function main() {
 
-$errorLog = New-Object ErrorLog($errorLogFile)
-
-$jobs = @()
-foreach ($line in $inputLines) {
-    $splitedLine = $line.Split("`t")
-    $id = $splitedLine[0]
-    $command = $splitedLine[1]
-    $preIds = if ($null -eq $splitedLine[2]) { $null }else { $splitedLine[2].Split(",") }
-    $jobs += New-Object Job($id, $command, $preIds, $logFile)
-}
-
-# completation check and start jobs
-while ((IsRunning -logFile $logFile -jobs $jobs)) {
-    if ($errorLog.IsNewWritten()) { "Detected new entries to the error log."; exit } 
-    $jobs | ForEach-Object { 
-        if (!$_.IsStart -and $_.IsStandby()) {
-            $_.Starts(); "$(Get-Date -Format "yyyy/MM/dd HH:mm:ss")`n  ID: $($_.Id)`n  Command: $($_.Command)`n`  PreID: $($_.PreIds -join ",")"
-        }
+    [array]$inputLines = Get-Content $jobsFlowFile
+    "LogFile: $logFile"; New-Item $logFile -ItemType File > $null
+    
+    $errorLog = New-Object ErrorLog($errorLogFile)
+    
+    $jobs = @()
+    foreach ($line in $inputLines) {
+        $splitedLine = $line.Split("`t")
+        $id = $splitedLine[0]
+        $command = $splitedLine[1]
+        $preIds = if ($null -eq $splitedLine[2]) { $null }else { $splitedLine[2].Split(",") }
+        $jobs += New-Object Job($id, $command, $preIds, $logFile)
     }
-    Start-Sleep -Seconds $scanIntervalSecond
+    
+    # completation check and start jobs
+    while ((IsRunning -logFile $logFile -jobs $jobs)) {
+        if ($errorLog.IsNewWritten()) { "Detected new entries to the error log."; exit } 
+        $jobs | ForEach-Object { 
+            if (!$_.IsStart -and $_.IsStandby()) {
+                $_.Starts(); "$(Get-Date -Format "yyyy/MM/dd HH:mm:ss")`n  ID: $($_.Id)`n  Command: $($_.Command)`n`  PreID: $($_.PreIds -join ",")"
+            }
+        }
+        Start-Sleep -Seconds $scanIntervalSecond
+    }
+
 }
+
+main
