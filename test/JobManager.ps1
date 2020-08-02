@@ -13,7 +13,8 @@ if (!$errorLogFile) {
 
 # other setting
 $scanIntervalSecond = "2"
-$logFile = Join-Path $PSScriptRoot "$(Get-Date -Format 'yyyyMMdd_HHmmss')_Jobs.log"
+$LogDir = Join-Path $PSScriptRoot "Log"
+$logFile = Join-Path $LogDir "$(Get-Date -Format 'yyyyMMdd_HHmmss')_Jobs.log"
 
 # components
 class Log {
@@ -21,14 +22,12 @@ class Log {
     $Time
     $Command
     $Message
-    $ExitCode
 
-    Log ($date, $time, $command, $message, $exitCode) {
+    Log ($date, $time, $command, $message) {
         $this.Date = $date
         $this.Time = $time
         $this.Command = $command
         $this.Message = $message
-        $this.ExitCode = $exitCode
     }
 
     [bool] IsEnd($jobId) {
@@ -44,7 +43,7 @@ function GetLogs($logFile) {
     $logs = @()
     foreach ($line in (Get-Content $logFile)) {
         $splitedLine = $line.Split("`t")
-        $logs += New-Object Log($splitedLine[0], $splitedLine[1], $splitedLine[2], $splitedLine[3], $splitedLine[4])
+        $logs += New-Object Log($splitedLine[0], $splitedLine[1], $splitedLine[2], $splitedLine[3])
     }
     return $logs
 }
@@ -56,13 +55,12 @@ class Job {
     $LogFile
 
     [bool]$IsStart
-    $Process
 
-    Job ($id, $command, [array]$preIds, $logFile) {
+    Job ($id, $command, [array]$preIds, $logDir) {
         $this.Id = $id
         $this.Command = $command
         $this.PreIds = $preIds
-        $this.LogFile = $logFile
+        $this.LogFile = Join-Path $logDir $id
     }
 
     [bool] IsStandby() {
@@ -93,11 +91,14 @@ class Job {
 
     [void] Starts() {
         $commands = @(
+            "echo %DATE%`t%TIME%"
             "echo %DATE%`t%TIME%`t$($this.Command)`t$($this.id)_START`t>>$($this.logFile)"
             "$($this.Command)"
+            "echo %DATE%`t%TIME%"
             "echo %DATE%`t%TIME%`t$($this.Command)`t$($this.id)_END`t>>$($this.logFile)"
+            "pause"
         )
-        $this.Process = Start-Process -FilePath cmd	-ArgumentList "/c $($commands -join '&')" -PassThru
+        Start-Process -FilePath cmd	-ArgumentList "/c $($commands -join '&')"
         $this.IsStart = $true
     }
 
@@ -147,6 +148,8 @@ class ErrorLog {
 # main
 function main() {
 
+    if (!(Test-Path $LogDir)) { New-Item $LogDir -ItemType Directory > $null }
+
     [array]$inputLines = Get-Content $jobsFlowFile
     "LogFile: $logFile"; New-Item $logFile -ItemType File > $null
     
@@ -158,17 +161,32 @@ function main() {
         $id = $splitedLine[0]
         $command = $splitedLine[1]
         $preIds = if ($null -eq $splitedLine[2]) { $null }else { $splitedLine[2].Split(",") }
-        $jobs += New-Object Job($id, $command, $preIds, $logFile)
+        $jobs += New-Object Job($id, $command, $preIds, $LogDir)
     }
     
-    # completation check and start jobs
+    
     while ((IsRunning -logFile $logFile -jobs $jobs)) {
-        if ($errorLog.IsNewWritten()) { "Detected new entries to the error log."; exit } 
+        
+        # cheking error log
+        if ($errorLog.IsNewWritten()) { "Detected new entries to the error log."; exit }
+
+        # scan temp log files & write to log file
+        $logItems = Get-ChildItem $LogDir | ForEach-Object { if ($_.Name -eq $_.BaseName) { $_ } }
+        Get-ChildItem $LogDir -Include ($jobs.Id)
+        foreach ($logItem in $logItems) {
+            if ([bool](Select-String -Path $logItem.FullName -Pattern "end")) {
+                Get-Content $logItem.FullName | Out-File $logFile -Encoding default -Append
+                Remove-Item $logItem.FullName
+            }  
+        }
+
+        # completation check and start jobs
         $jobs | ForEach-Object { 
             if (!$_.IsStart -and $_.IsStandby()) {
                 $_.Starts(); "$(Get-Date -Format "yyyy/MM/dd HH:mm:ss")`n  ID: $($_.Id)`n  Command: $($_.Command)`n`  PreID: $($_.PreIds -join ",")"
             }
         }
+
         Start-Sleep -Seconds $scanIntervalSecond
     }
 
